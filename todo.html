@@ -1,0 +1,431 @@
+<!--
+Requires GET_POST_files to be running in 
+some directory where files
+
+must exist.
+-->
+<html>
+<head>
+<meta charset="utf-8"> 
+<title>Todo</title>
+<script src="/lib/jquery.min.js"></script>
+<script src="/lib/jquery-ui.min.js"></script>
+<script src="/lib/jquery.mjs.nestedSortable.js"></script>
+<link href="/lib/font-awesome-4.2.0/css/font-awesome.min.css" rel="stylesheet">
+<script src="/src/time.js"></script>
+<script src="/src/basics.js"></script>
+<script src="/src/attributes.js"></script>
+<script src="/src/common.js"></script>
+<style>
+body {
+    font-family: proxima-nova, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 13px;
+}
+
+li {
+    list-style-type: none;
+    overflow: hidden;
+    margin: 1px;
+}
+
+ol {
+    padding-left: 16px;
+}
+
+.handle {
+    float: left;
+    width: 16px;
+    height: 16px;
+}
+
+.placeholder {
+    outline: 1px dashed blue;
+}
+
+.cl ol {
+    display: none;
+}
+
+/* attributes */
+.checked {
+    float: left;
+    width:  20px;
+    height: 16px;
+}
+
+.expanded {
+    display: none;
+    width:  16px;
+    height: 16px;
+    overflow: hidden;
+    max-width:  16px;
+    max-height: 16px;
+}
+
+.hasChildren > div > div > .expanded {
+    display: inline-block;
+}
+
+.text {
+    line-height: 130%;
+    vertical-align: top;
+    padding-right: 1px;
+}
+
+.p {
+    width:1000px; height: 16px; 
+    display: inline-block;
+    position: absolute;
+}
+
+.id {
+    display: none;
+    vertical-align: top;
+    margin-right: 5px;
+}
+</style>
+
+<script>
+"use strict";
+/* abbreviations:
+d dynamic
+i i
+dc datecontainer
+cl collapsed - see options o
+*/
+function getParent(n) {
+    return $(n.parents("li")[0]);
+}
+
+function getParentId(n) {
+    return getId(getParent(n));
+}
+
+// Return the ol child of the li with the given id - create it if non-existent
+function getOl(id) {    
+    var li = byId(id);
+    var ol = li.children("ol");
+    if (ol.length == 0) {
+        ol = $("<ol/>");
+        li.append(ol);
+    }
+    return ol;
+}
+
+
+function getIdByOl(ol) {
+    return getIntId(ol.closest("li"));
+}
+
+// Values
+function toggle(i) {return 1-i;}
+
+function updated(id, key) {
+    updatedByDiv(byId(id).children("div"), id, key);
+}
+
+function updatedByDiv(div, id, key) {
+    var t = getModifyTime(id, key);
+    div.find("."+key).attr("title", 
+        t == "" ? getModifyTime(id, "id") : t
+    );
+}
+
+function setValue(id, key, f) {
+    var nval;
+    if (!$.isFunction(f)) 
+        nval = f;
+    else 
+        nval = f(getAttribute(id, key));
+        
+    if (isDefined(nval)) setAttribute(id, key, nval);
+    updated(id, key)
+    return nval;
+}
+
+// Updates all attributes
+// of the item with the given id
+// (according to the current attribute values of the item with that id)
+// 
+function changedByNodeAndDiv(n, div, id) {
+    // id
+    
+    // expanded
+    var expanded = getAttribute(id, "expanded");  
+    
+    if (expanded && !n.hasClass("isExpanded")) {
+        if (div.find("ol").length == 0) {
+            loadChildren(id);
+            /* The following is an optimization: 
+            We update only indicators, 
+            hierarchy data didn't change. 
+            Might also just scheduleDomHierarchyUpdate.. nah the timeout is too short.
+            */
+            updateChildIndicators(); 
+        }
+    } 
+    if (!expanded) {
+        getOl(id).remove();
+        //console.log("remove all for "+id)
+    }
+    
+    var ns = div.find(".expanded");
+    div.find(".expanded").toggleClass("fa-chevron-right", expanded == 0);
+    div.find(".expanded").toggleClass("fa-chevron-circle-down", expanded == 1);
+    n.toggleClass(o.collapsedClass, expanded == 0);
+    n.toggleClass(o.expandedClass, expanded == 1);
+    n.toggleClass("isExpanded", expanded == 1);
+   
+    // checked
+    var checked = getAttribute(id, "checked");
+    
+    ns = div.find(".checked");
+    div.find(".checked").toggleClass("fa-square-o", checked == 0);
+    div.find(".checked").toggleClass("fa-check-square-o", checked == 1);
+    
+    // text
+    var text = getAttribute(id, "text");
+    
+    var tfs = div.find(".text");
+    eachDom(tfs, function(tf) {
+        if (text != tf.text()) tf.text(text);
+    });
+}
+function changedByNode(n, id) {
+    var div = n.children("div");
+    changedByNodeAndDiv(n, div, id);
+}
+function changed(id) {
+    changedByNode(byId(id), id);
+}
+
+function expand(previd) {
+    if (getAttribute(previd, "expanded") == 0) {
+        setAttribute(previd, "expanded", 1)
+        changed(previd);
+    }
+}
+
+function newLi(id) {
+    // Item dom
+    var s = "<li><div><div class=handle><div class='expanded fa'></div></div><div class='checked fa'></div><span class=id>%</span><span class=text contenteditable=true></span><div class=p/></div></li>";
+    s = s.replace(/%/g, ""+id);
+    var n = $(s);
+    
+    setId(n, id);
+    
+    getOl(0).append(n); // dummy
+    var div = n.children("div"); // Main container
+
+    // Attributes & Callbacks
+    
+    // Set up toggle click callback hander for expand and check
+    function setToggled(key) {
+        div.find("."+key).click(function() {
+            setValue(id, key, 
+                toggle 
+                /* toggle function, swapping the value */);
+            changedByNodeAndDiv(n, div, id);
+        });
+    }
+    
+    setToggled("expanded")
+    setToggled("checked") 
+    
+    // Text
+    var tf = div.find(".text");
+    
+    div.find(".p").click(function() {placeCaretAtEnd(tf[0]);})
+    
+    // Setter
+    tf.keyup(function( event ) {
+        function end() {
+            $(this).text("")
+            setValue(id, "text", "");
+            changedByNodeAndDiv(n, div, id);
+            tf.focus();
+            scheduleDomHierarchyUpdate();
+            return false;
+        }
+        // : only = move left one level (always possible unless at level 0)
+        if (getParentId(n) != 0 && ($(this).text() == ":" || $(this).text() == "：")) {
+            n.insertAfter(getParent(n))
+            return end();
+        }
+    
+        // period or decimal dot only = make this a subchild of the preceding 
+        // if there is one and that is expanded
+        if (($(this).text() == "." || $(this).text() == "。") && n.prev().length > 0) {
+            
+            var previd = getId(n.prev());
+            expand(previd);
+            
+        
+            getOl(getId(n.prev())).append(n)
+            return end();
+        }
+    })
+    tf.keyup(function() {
+        setValue(id, "text", $(this).text());
+        changedByNodeAndDiv(n, div, id);
+    });
+    tf.keydown(function( event ) {
+        if ( event.which == 13 /*enter*/) {
+            var created = newLi(addItem())
+            // Shift enter = add child
+            if (event.shiftKey) {
+                expand(id);
+                getOl(id).append(created)
+                scheduleDomHierarchyUpdate();
+            }
+            // Ctrl Enter = add before current
+            else if (event.ctrlKey) {
+                created.insertBefore(n)
+                scheduleDomHierarchyUpdate();
+            }
+            // Enter = add after current
+            else {
+                created.insertAfter(n)
+                scheduleDomHierarchyUpdate();
+            }
+            created.find(".text").focus() // start editing new
+            return false; 
+        }
+        // Shift delete/shift backspace, or backspace on empty = remove item
+        else if (
+             event.which == 46 /*delete*/   && event.shiftKey ||
+             event.which == 8 /*backspace*/ && (event.shiftKey || $(this).text() == "")) {
+             
+             // Remove logical items
+             removeItem(id);
+             
+             // Update dom
+             n.remove();
+             scheduleDomHierarchyUpdate();
+             return false; // don't do anything else with this keystroke
+        }
+    });
+    
+    // First update
+    changedByNodeAndDiv(n, div, id)
+    
+    updatedByDiv(div, id, "id")
+    updatedByDiv(div, id, "text")
+    updatedByDiv(div, id, "checked")
+    updatedByDiv(div, id, "expanded")
+    
+    return n;
+}
+
+function updateChildIndicators() {
+console.log("uci")
+    // Update all items which have children
+    var h = getHierarchy();
+    $("li").toggleClass("hasChildren", false);
+    $.each(h, function(id, childIds) {
+    console.log(id, typeof id, childIds.length,childIds)
+        byId(id).toggleClass("hasChildren", childIds.length > 0);
+    })
+}
+
+// Called after the structure changed.
+// Do not call directly
+function domHierarchyChanged() {
+    if (!window.hierarchyHasChange) {
+        //console.log("no hierarchy changes");
+        return;
+    }
+    // Recompute hierarchy
+    var h = {};
+    
+    // Collect the children of those that are expanded
+    eachDom($(".isExpanded"), function (li) {
+        var id = getId(li);
+        h[id] = []
+        var cs = li.children("ol").children();
+        
+        eachDom(cs, function (c) {
+            h[id].push(getIntId(c));
+        });
+    });
+    //console.log("set hierarchy "+JSON.stringify(h))
+    setHierarchy(h);
+
+    updateChildIndicators();
+    
+    
+    // 
+    window.hierarchyHasChange = false;
+    window.updateChildIndicatorsScheduled = false;
+}
+
+function scheduleDomHierarchyUpdate() {
+    if (window.hierarchyHasChange) return; // don't reschedule
+    window.hierarchyHasChange = true;
+    setTimeout(domHierarchyChanged, 16);
+}
+
+function scheduleUpdateChildIndicators() {
+    if (window.updateChildIndicatorsScheduled) return; // don't reschedule
+    window.updateChildIndicatorsScheduled = true;
+    setTimeout(domHierarchyChanged, 16);
+}
+
+function treeChanged(a,b,c) {
+    window.hierarchyHasChange = true;
+}
+
+var o = {
+    forcePlaceholderSize: true,
+    handle: '.handle',
+    helper:	'clone',
+    items: 'li',
+    opacity: .6,
+    placeholder: 'placeholder',
+    revert: 0, // ms until wrongly placed item is back in original place
+    tabSize: 25, //px
+    tolerance: 'pointer',
+    toleranceElement: '> div',
+    maxLevels: 0, // unlimited
+    isTree: true,
+    expandOnHover: 0,
+    change: treeChanged, // use below instead
+    
+    branchClass: 'br',
+    collapsedClass: 'cl',
+    disableNestingClass: 'dn',
+    errorClass: 'er',
+    expandedClass: 'ex',
+    hoveringClass: 'ho',
+    leafClass: 'lf',
+    disabledClass: 'ds'
+};
+    
+function loadChildren(id) {
+    console.log("loading for "+typeof id+":"+id);
+    var h = getHierarchy()[id];
+    if (!isDefined(h)) return;
+    eachItem(h, function (child_id) {
+        getOl(id).append(newLi(child_id));
+    });
+}
+    
+$(function () {
+    window.updateChildIndicatorsScheduled = false;
+    
+    // Construct hierarchy
+    loadChildren(0);
+    
+    // Setup sortable
+    $('ol.sortable').nestedSortable(o);
+    $("body").mouseup(function() {setTimeout(domHierarchyChanged, 16);/*hierarchy possibly changed - depending on whether change is ever called*/});
+    scheduleDomHierarchyUpdate();
+});
+</script>
+</head>
+<body>
+<p id=dummy contenteditable=true style="display:none"></p>
+<li id=0 class='ex isExpanded'>
+<ol class=sortable></ol></id>
+</body>
+<html>
