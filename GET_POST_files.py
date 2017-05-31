@@ -48,9 +48,9 @@ def main():
         mimetypes.add_type("application/font-woff", ".woff")
         mimetypes.add_type("application/octet-stream", ".ttf")
         
-        
-        server = HTTPServer(('', 8000), MyHandler)
-        print 'started GET_POST_files server at port 8000. supported operations: GET /file, POST /file <content>'
+        p = 8001
+        server = HTTPServer(('', p), MyHandler)
+        print 'started GET_POST_files server at port',p,' supported operations: GET /file, POST /file <content>'
         server.serve_forever()
     except KeyboardInterrupt:
         print '^C received, shutting down server'
