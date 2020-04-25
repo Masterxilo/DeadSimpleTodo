@@ -1,4 +1,4 @@
-# A simple HTTP server at 8000
+# A simple HTTP server
 # Serves all files in its directory and subdirectories.
 #
 # Data that is POSTed is written to a file of the name specified in the

@@ -1,2 +1,5 @@
 # Do not push user data
-data/
+data
+
+# Shut up windows
+desktop.ini

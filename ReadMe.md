@@ -1,7 +1,13 @@
+# DeadSimpleTodo
 A dead simple todo list.
 
-c.f. http://hurricane-eyeent.blogspot.ch/2015/02/dead-simple-todo-tool.html
+* https://github.com/Masterxilo/DeadSimpleTodo
+* http://hurricane-eyeent.blogspot.ch/2015/02/dead-simple-todo-tool.html
 
-Launch GET_POST_files.py with Python 2.7 then visit http://localhost:8001/todo.html
+To execute, run `run.ps1` using powershell:
 
-Copy initial_data to data to reset, backup data to keep data.
+```powershell
+.\run.ps1
+```
+
+In src Folder, copy `initial_data` to data to reset (or delete `data`), backup `data` to keep data.
